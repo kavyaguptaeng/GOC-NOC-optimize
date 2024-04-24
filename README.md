@@ -2,7 +2,7 @@
 
 ### NOC Design Optimization using Q-Learning
 
-This is to provide the information on 
+This is to provide the information on:
 **1.  How to generate the environment needed to run the Q-learning algorithm for optimizing a Network on Chip (NOC) design, how to run the code, and additional details about the approach, correctness, and complexity**
 **2. Design Document for Q-Learning RL Framework for NOC Design Optimization**
 
