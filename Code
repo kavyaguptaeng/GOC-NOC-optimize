@@ -1,0 +1,103 @@
+import numpy as np
+
+# Initialize Q-table with zeros
+Q_table = np.zeros((100, 5))
+
+# Hyperparameters
+alpha = 0.1
+gamma = 0.9
+epsilon = 0.1
+
+# Thresholds and targets
+min_latency = 10
+max_bandwidth = 3200
+target_buffer_occupancy = 0.9
+throttling_percentage = 0.05
+
+# Simulation parameters
+num_episodes = 1000
+max_steps = 100
+
+# Simulator API functions
+def get_buffer_occupancy(buffer_id):
+    # Return average buffer occupancy for given buffer_id
+    return 0.5  # Placeholder value
+
+def get_arb_rates(agent_type):
+    # Return arbitration rates for given agent_type
+    return 0.5  # Placeholder value
+
+def get_powerlimit_threshold():
+    # Return power limit threshold
+    return np.random.choice([0, 1])
+
+# Helper function to discretize values
+def discretize(value, min_val, max_val, num_states):
+    return int((value - min_val) / (max_val - min_val) * (num_states - 1))
+
+# Function to calculate average throttling time
+def get_avg_throttling_time(throttling):
+    if throttling:
+        return 1
+    return 0
+
+# Q-learning algorithm
+for episode in range(num_episodes):
+    state = [0, 1, 1, 0]  # Initial state
+    for step in range(max_steps):
+        if np.random.uniform(0, 1) < epsilon:
+            action = np.random.randint(0, 5)  # Explore
+        else:
+            action = np.argmax(Q_table[discretize(state[0], 0, 100, 100),
+                                        discretize(state[1], 0, 1, 2),
+                                        discretize(state[2], 0, 1, 2),
+                                        discretize(state[3], 0, 1, 2)])
+
+        # Execute action
+        if action == 0 and state[0] < 100:  # Increase buffer
+            state[0] += 1
+        elif action == 1 and state[0] > 0:  # Decrease buffer
+            state[0] -= 1
+        elif action == 2:  # Adjust CPU weight
+            state[1] = (state[1] + 0.1) % 1
+        elif action == 3:  # Adjust IO weight
+            state[2] = (state[2] + 0.1) % 1
+        elif action == 4:  # Throttle
+            state[3] = 1 if np.random.uniform(0, 1) < throttling_percentage else 0
+        
+        # Placeholder values for latency, bandwidth, and throttling time
+        avg_latency = 15
+        measured_bandwidth = 3000
+        avg_throttling_time = get_avg_throttling_time(state[3])
+        buffer_occupancy = get_buffer_occupancy(0)
+        
+        # Calculate reward
+        reward = 0
+        if avg_latency <= min_latency:
+            reward += 1
+        if measured_bandwidth >= 0.95 * max_bandwidth:
+            reward += 1
+        if buffer_occupancy >= target_buffer_occupancy:
+            reward += 1
+        if avg_throttling_time <= 0.05 * max_steps:
+            reward += 1
+        if get_powerlimit_threshold() == 1:
+            reward -= 1
+        
+        # Update Q-table
+        new_state = [state[0], state[1], state[2], state[3]]
+        Q_table[discretize(state[0], 0, 100, 100),
+                discretize(state[1], 0, 1, 2),
+                discretize(state[2], 0, 1, 2),
+                discretize(state[3], 0, 1, 2)] += alpha * (
+                    reward + gamma * np.max(Q_table[discretize(new_state[0], 0, 100, 100),
+                                                    discretize(new_state[1], 0, 1, 2),
+                                                    discretize(new_state[2], 0, 1, 2),
+                                                    discretize(new_state[3], 0, 1, 2)]) -
+                    Q_table[discretize(state[0], 0, 100, 100),
+                            discretize(state[1], 0, 1, 2),
+                            discretize(state[2], 0, 1, 2),
+                            discretize(state[3], 0, 1, 2)])
+
+        if reward > 3:  # Success condition
+            break
