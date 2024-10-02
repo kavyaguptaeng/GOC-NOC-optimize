@@ -1,103 +1,328 @@
 import numpy as np
+import logging
+import sys
 
-# Initialize Q-table with zeros
-Q_table = np.zeros((100, 5))
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ]
+)
 
-# Hyperparameters
-alpha = 0.1
-gamma = 0.9
-epsilon = 0.1
+class NOCOptimizer:
+    def __init__(self, config):
+        """
+        Initialize the NOC Optimizer with Q-learning parameters and environment settings.
 
-# Thresholds and targets
-min_latency = 10
-max_bandwidth = 3200
-target_buffer_occupancy = 0.9
-throttling_percentage = 0.05
+        :param config: Dictionary containing configuration parameters.
+        """
+        self.num_buffer_states = config.get('num_buffer_states', 100)
+        self.num_cpu_weights = config.get('num_cpu_weights', 2)
+        self.num_io_weights = config.get('num_io_weights', 2)
+        self.num_throttle_states = config.get('num_throttle_states', 2)
+        self.total_states = self.num_buffer_states * self.num_cpu_weights * \
+                            self.num_io_weights * self.num_throttle_states
 
-# Simulation parameters
-num_episodes = 1000
-max_steps = 100
+        self.Q_table = np.zeros((self.total_states, config['num_actions']))
+        self.alpha = config.get('alpha', 0.1)
+        self.gamma = config.get('gamma', 0.9)
+        self.epsilon = config.get('epsilon', 0.1)
+        self.epsilon_decay = config.get('epsilon_decay', 0.995)
+        self.min_epsilon = config.get('min_epsilon', 0.01)
 
-# Simulator API functions
-def get_buffer_occupancy(buffer_id):
-    # Return average buffer occupancy for given buffer_id
-    return 0.5  # Placeholder value
+        # Thresholds and targets
+        self.min_latency = config.get('min_latency', 10)
+        self.max_bandwidth = config.get('max_bandwidth', 3200)
+        self.target_buffer_occupancy = config.get('target_buffer_occupancy', 0.9)
+        self.throttling_percentage = config.get('throttling_percentage', 0.05)
 
-def get_arb_rates(agent_type):
-    # Return arbitration rates for given agent_type
-    return 0.5  # Placeholder value
+        # Simulation parameters
+        self.num_episodes = config.get('num_episodes', 1000)
+        self.max_steps = config.get('max_steps', 100)
 
-def get_powerlimit_threshold():
-    # Return power limit threshold
-    return np.random.choice([0, 1])
+        # Initialize state variables
+        self.state = [0, 1, 1, 0]  # [buffer_size, cpu_weight, io_weight, throttling]
 
-# Helper function to discretize values
-def discretize(value, min_val, max_val, num_states):
-    return int((value - min_val) / (max_val - min_val) * (num_states - 1))
+    # Simulator API placeholder functions
+    def get_buffer_occupancy(self, buffer_id):
+        """
+        Placeholder for obtaining buffer occupancy from the simulator.
 
-# Function to calculate average throttling time
-def get_avg_throttling_time(throttling):
-    if throttling:
-        return 1
-    return 0
+        :param buffer_id: Identifier for the buffer.
+        :return: Float representing buffer occupancy.
+        """
+        return 0.5  # Replace with actual simulator API
 
-# Q-learning algorithm
-for episode in range(num_episodes):
-    state = [0, 1, 1, 0]  # Initial state
-    for step in range(max_steps):
-        if np.random.uniform(0, 1) < epsilon:
-            action = np.random.randint(0, 5)  # Explore
-        else:
-            action = np.argmax(Q_table[discretize(state[0], 0, 100, 100),
-                                        discretize(state[1], 0, 1, 2),
-                                        discretize(state[2], 0, 1, 2),
-                                        discretize(state[3], 0, 1, 2)])
+    def get_arb_rates(self, agent_type):
+        """
+        Placeholder for obtaining arbitration rates from the simulator.
 
-        # Execute action
-        if action == 0 and state[0] < 100:  # Increase buffer
-            state[0] += 1
-        elif action == 1 and state[0] > 0:  # Decrease buffer
-            state[0] -= 1
+        :param agent_type: Type of agent ('CPU' or 'IO').
+        :return: Float representing arbitration rate.
+        """
+        return 0.5  # Replace with actual simulator API
+
+    def get_powerlimit_threshold(self):
+        """
+        Placeholder for obtaining power limit threshold from the simulator.
+
+        :return: Integer (0 or 1) indicating power limit status.
+        """
+        return np.random.choice([0, 1])  # Replace with actual simulator API
+
+    def set_max_buffer_size(self, buffer_id, num_entries):
+        """
+        Placeholder for setting the maximum buffer size in the simulator.
+
+        :param buffer_id: Identifier for the buffer.
+        :param num_entries: Number of buffer entries.
+        """
+        pass  # Replace with actual simulator API
+
+    def set_arbiter_weights(self, agent_type, weight):
+        """
+        Placeholder for setting arbitration weights in the simulator.
+
+        :param agent_type: Type of agent ('CPU' or 'IO').
+        :param weight: Weight value to set.
+        """
+        pass  # Replace with actual simulator API
+
+    def throttle(self):
+        """
+        Placeholder for activating throttling in the simulator.
+        """
+        pass  # Replace with actual simulator API
+
+    # Helper Functions
+    def discretize(self, value, min_val, max_val, num_states):
+        """
+        Discretize a continuous value into discrete bins.
+
+        :param value: The continuous value to discretize.
+        :param min_val: Minimum possible value.
+        :param max_val: Maximum possible value.
+        :param num_states: Number of discrete states.
+        :return: Integer representing the discrete state.
+        """
+        value = max(min_val, min(value, max_val))
+        ratio = (value - min_val) / (max_val - min_val)
+        return int(ratio * (num_states - 1))
+
+    def encode_state(self, buffer, cpu, io, throttle):
+        """
+        Encode multi-dimensional state into a single index.
+
+        :param buffer: Discretized buffer size.
+        :param cpu: Discretized CPU weight.
+        :param io: Discretized IO weight.
+        :param throttle: Discretized throttling state.
+        :return: Integer representing the encoded state.
+        """
+        return (buffer * self.num_cpu_weights * self.num_io_weights * self.num_throttle_states +
+                cpu * self.num_io_weights * self.num_throttle_states +
+                io * self.num_throttle_states +
+                throttle)
+
+    def get_avg_throttling_time(self, throttling):
+        """
+        Calculate average throttling time based on throttling state.
+
+        :param throttling: Integer indicating throttling state.
+        :return: Integer representing throttling time.
+        """
+        return 1 if throttling else 0
+
+    def run_episode(self):
+        """
+        Execute a single episode of the Q-learning algorithm.
+
+        :return: Cumulative reward obtained in the episode.
+        """
+        # Initialize state
+        self.state = [0, 1, 1, 0]
+        state_index = self.encode_state(
+            self.discretize(self.state[0], 0, 100, self.num_buffer_states),
+            self.discretize(self.state[1], 0, 1, self.num_cpu_weights),
+            self.discretize(self.state[2], 0, 1, self.num_io_weights),
+            self.discretize(self.state[3], 0, 1, self.num_throttle_states)
+        )
+
+        cumulative_reward = 0
+
+        for step in range(self.max_steps):
+            # Action Selection
+            if np.random.uniform(0, 1) < self.epsilon:
+                action = np.random.randint(0, self.Q_table.shape[1])  # Explore
+                logging.debug(f"Step {step}: Exploring action {action}")
+            else:
+                action = np.argmax(self.Q_table[state_index])  # Exploit
+                logging.debug(f"Step {step}: Exploiting action {action}")
+
+            # Execute Action
+            previous_state = self.state.copy()
+            self.execute_action(action)
+            logging.debug(f"Executed action {action}: {previous_state} -> {self.state}")
+
+            # Obtain Metrics
+            avg_latency = 15  # Replace with actual simulator API
+            measured_bandwidth = 3000  # Replace with actual simulator API
+            avg_throttling_time = self.get_avg_throttling_time(self.state[3])
+            buffer_occupancy = self.get_buffer_occupancy(0)
+
+            # Calculate Reward
+            reward = self.calculate_reward(avg_latency, measured_bandwidth,
+                                          buffer_occupancy, avg_throttling_time)
+            cumulative_reward += reward
+            logging.debug(f"Step {step}: Reward {reward}")
+
+            # Encode New State
+            new_state_index = self.encode_state(
+                self.discretize(self.state[0], 0, 100, self.num_buffer_states),
+                self.discretize(self.state[1], 0, 1, self.num_cpu_weights),
+                self.discretize(self.state[2], 0, 1, self.num_io_weights),
+                self.discretize(self.state[3], 0, 1, self.num_throttle_states)
+            )
+
+            # Q-Table Update
+            best_next_action = np.argmax(self.Q_table[new_state_index])
+            td_target = reward + self.gamma * self.Q_table[new_state_index, best_next_action]
+            td_error = td_target - self.Q_table[state_index, action]
+            self.Q_table[state_index, action] += self.alpha * td_error
+            logging.debug(f"Updated Q-table at state {state_index}, action {action}: {self.Q_table[state_index, action]}")
+
+            # Transition to New State
+            state_index = new_state_index
+
+            # Check for success condition
+            if reward > 3:
+                logging.info(f"Episode terminated early at step {step} with cumulative reward {cumulative_reward}")
+                break
+
+        return cumulative_reward
+
+    def execute_action(self, action):
+        """
+        Modify the current state based on the selected action.
+
+        :param action: Integer representing the action to execute.
+        """
+        if action == 0 and self.state[0] < 100:  # Increase buffer
+            self.state[0] += 1
+            self.set_max_buffer_size(0, self.state[0])
+            logging.debug(f"Increased buffer size to {self.state[0]}")
+        elif action == 1 and self.state[0] > 0:  # Decrease buffer
+            self.state[0] -= 1
+            self.set_max_buffer_size(0, self.state[0])
+            logging.debug(f"Decreased buffer size to {self.state[0]}")
         elif action == 2:  # Adjust CPU weight
-            state[1] = (state[1] + 0.1) % 1
+            self.state[1] = round((self.state[1] + 0.1) % 1, 1)
+            self.set_arbiter_weights('CPU', self.state[1])
+            logging.debug(f"Adjusted CPU weight to {self.state[1]}")
         elif action == 3:  # Adjust IO weight
-            state[2] = (state[2] + 0.1) % 1
+            self.state[2] = round((self.state[2] + 0.1) % 1, 1)
+            self.set_arbiter_weights('IO', self.state[2])
+            logging.debug(f"Adjusted IO weight to {self.state[2]}")
         elif action == 4:  # Throttle
-            state[3] = 1 if np.random.uniform(0, 1) < throttling_percentage else 0
-        
-        # Placeholder values for latency, bandwidth, and throttling time
-        avg_latency = 15
-        measured_bandwidth = 3000
-        avg_throttling_time = get_avg_throttling_time(state[3])
-        buffer_occupancy = get_buffer_occupancy(0)
-        
-        # Calculate reward
-        reward = 0
-        if avg_latency <= min_latency:
-            reward += 1
-        if measured_bandwidth >= 0.95 * max_bandwidth:
-            reward += 1
-        if buffer_occupancy >= target_buffer_occupancy:
-            reward += 1
-        if avg_throttling_time <= 0.05 * max_steps:
-            reward += 1
-        if get_powerlimit_threshold() == 1:
-            reward -= 1
-        
-        # Update Q-table
-        new_state = [state[0], state[1], state[2], state[3]]
-        Q_table[discretize(state[0], 0, 100, 100),
-                discretize(state[1], 0, 1, 2),
-                discretize(state[2], 0, 1, 2),
-                discretize(state[3], 0, 1, 2)] += alpha * (
-                    reward + gamma * np.max(Q_table[discretize(new_state[0], 0, 100, 100),
-                                                    discretize(new_state[1], 0, 1, 2),
-                                                    discretize(new_state[2], 0, 1, 2),
-                                                    discretize(new_state[3], 0, 1, 2)]) -
-                    Q_table[discretize(state[0], 0, 100, 100),
-                            discretize(state[1], 0, 1, 2),
-                            discretize(state[2], 0, 1, 2),
-                            discretize(state[3], 0, 1, 2)])
+            self.state[3] = 1 if np.random.uniform(0, 1) < self.throttling_percentage else 0
+            if self.state[3]:
+                self.throttle()
+                logging.debug("Throttling activated")
+            else:
+                logging.debug("Throttling not activated")
 
-        if reward > 3:  # Success condition
-            break
+    def calculate_reward(self, latency, bandwidth, buffer_occupancy, throttling_time):
+        """
+        Calculate the reward based on performance metrics.
+
+        :param latency: Measured latency.
+        :param bandwidth: Measured bandwidth.
+        :param buffer_occupancy: Current buffer occupancy.
+        :param throttling_time: Current throttling time.
+        :return: Integer representing the reward.
+        """
+        reward = 0
+        if latency <= self.min_latency:
+            reward += 1
+        if bandwidth >= 0.95 * self.max_bandwidth:
+            reward += 1
+        if buffer_occupancy >= self.target_buffer_occupancy:
+            reward += 1
+        if throttling_time <= 0.05 * self.max_steps:
+            reward += 1
+        if self.get_powerlimit_threshold() == 1:
+            reward -= 1
+        return reward
+
+    def train(self):
+        """
+        Train the Q-learning agent over a specified number of episodes.
+        """
+        rewards_per_episode = []
+        for episode in range(1, self.num_episodes + 1):
+            cumulative_reward = self.run_episode()
+            rewards_per_episode.append(cumulative_reward)
+
+            # Decay epsilon
+            if self.epsilon > self.min_epsilon:
+                self.epsilon *= self.epsilon_decay
+
+            # Logging progress
+            if episode % 100 == 0 or episode == 1:
+                avg_reward = np.mean(rewards_per_episode[-100:])
+                logging.info(f"Episode {episode}/{self.num_episodes} - Average Reward: {avg_reward:.2f} - Epsilon: {self.epsilon:.4f}")
+
+        logging.info("Training completed.")
+
+    def save_q_table(self, filepath):
+        """
+        Save the Q-table to a file.
+
+        :param filepath: Path to the file where Q-table will be saved.
+        """
+        np.save(filepath, self.Q_table)
+        logging.info(f"Q-table saved to {filepath}")
+
+    def load_q_table(self, filepath):
+        """
+        Load the Q-table from a file.
+
+        :param filepath: Path to the file from which Q-table will be loaded.
+        """
+        self.Q_table = np.load(filepath)
+        logging.info(f"Q-table loaded from {filepath}")
+
+def main():
+    # Configuration parameters
+    config = {
+        'num_buffer_states': 100,
+        'num_cpu_weights': 2,
+        'num_io_weights': 2,
+        'num_throttle_states': 2,
+        'num_actions': 5,
+        'alpha': 0.1,
+        'gamma': 0.9,
+        'epsilon': 0.1,
+        'epsilon_decay': 0.995,
+        'min_epsilon': 0.01,
+        'min_latency': 10,
+        'max_bandwidth': 3200,
+        'target_buffer_occupancy': 0.9,
+        'throttling_percentage': 0.05,
+        'num_episodes': 1000,
+        'max_steps': 100
+    }
+
+    # Initialize optimizer
+    optimizer = NOCOptimizer(config)
+
+    # Start training
+    optimizer.train()
+
+    # Save Q-table after training
+    optimizer.save_q_table('q_table.npy')
+
+if __name__ == "__main__":
+    main()
